@@ -132,3 +132,114 @@ class Image:
     def threshold(self, cutoff=128):
         new_pixels = [0 if p < cutoff else self.max_val for p in self.pixels]
         return Image(self.width, self.height, new_pixels, self.max_val)
+
+    def invert(self):
+        new_pixels = [self.max_val - p for p in self.pixels]
+        return Image(self.width, self.height, new_pixels, self.max_val)
+
+    def crop(self, x, y, w, h):
+        new_pixels = []
+        for j in range(h):
+            row_start = (y + j) * self.width + x
+            new_pixels.extend(self.pixels[row_start : row_start + w])
+        return Image(w, h, new_pixels, self.max_val)
+
+    def resize(self, new_w, new_h):
+        # Nearest neighbor resizing for simplicity and speed on binary images
+        x_scale = self.width / new_w
+        y_scale = self.height / new_h
+        new_pixels = []
+        for y in range(new_h):
+            for x in range(new_w):
+                src_x = int(x * x_scale)
+                src_y = int(y * y_scale)
+                new_pixels.append(self.get_pixel(src_x, src_y))
+        return Image(new_w, new_h, new_pixels, self.max_val)
+
+    def resize_contain(self, target_w, target_h, bg_color=0, padding=0):
+        # 1. Calculate available space
+        avail_w = max(1, target_w - 2 * padding)
+        avail_h = max(1, target_h - 2 * padding)
+
+        # 2. Calculate scale to fit while maintaining aspect ratio
+        scale = min(avail_w / self.width, avail_h / self.height)
+        new_w = int(self.width * scale)
+        new_h = int(self.height * scale)
+        
+        # Avoid 0 dimensions
+        new_w = max(1, new_w)
+        new_h = max(1, new_h)
+
+        # 3. Resize source
+        resized_img = self.resize(new_w, new_h)
+        
+        # 4. Create canvas
+        total_pixels = target_w * target_h
+        canvas_pixels = [bg_color] * total_pixels
+        
+        # 5. Paste centered
+        start_x = (target_w - new_w) // 2
+        start_y = (target_h - new_h) // 2
+        
+        for y in range(new_h):
+            for x in range(new_w):
+                val = resized_img.get_pixel(x, y)
+                target_idx = (start_y + y) * target_w + (start_x + x)
+                
+                # Boundary check just in case
+                if 0 <= target_idx < len(canvas_pixels):
+                    canvas_pixels[target_idx] = val
+                    
+        return Image(target_w, target_h, canvas_pixels, self.max_val)
+
+    def segment_lines(self, threshold_density=0.01):
+        # Horizontal projection to find lines
+        lines = []
+        in_line = False
+        start_y = 0
+        
+        # Calculate row densities
+        row_sums = []
+        for y in range(self.height):
+            row_sum = sum(1 for x in range(self.width) if self.get_pixel(x, y) > 0)
+            row_sums.append(row_sum)
+
+        for y, val in enumerate(row_sums):
+            if val > (self.width * threshold_density) and not in_line:
+                in_line = True
+                start_y = y
+            elif val <= (self.width * threshold_density) and in_line:
+                in_line = False
+                if y - start_y > 5: # Minimum line height
+                     lines.append(self.crop(0, start_y, self.width, y - start_y))
+        
+        # Capture last line if image ends
+        if in_line:
+             lines.append(self.crop(0, start_y, self.width, self.height - start_y))
+             
+        return lines
+
+    def segment_chars(self, threshold_density=0.01):
+        # Vertical projection to find chars in a line
+        chars = []
+        in_char = False
+        start_x = 0
+        
+        col_sums = []
+        for x in range(self.width):
+            col_sum = sum(1 for y in range(self.height) if self.get_pixel(x, y) > 0)
+            col_sums.append(col_sum)
+            
+        for x, val in enumerate(col_sums):
+            if val > (self.height * threshold_density) and not in_char:
+                in_char = True
+                start_x = x
+            elif val <= (self.height * threshold_density) and in_char:
+                in_char = False
+                if x - start_x > 2:
+                    chars.append(self.crop(start_x, 0, x - start_x, self.height))
+
+        if in_char:
+            chars.append(self.crop(start_x, 0, self.width - start_x, self.height))
+            
+        return chars

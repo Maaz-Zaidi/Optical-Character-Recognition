@@ -9,7 +9,7 @@ def convert_to_ppm(input_path, output_path):
         img = PilImage.open(input_path)
         img = img.convert("RGB") 
         
-        # Save as PPM
+        # Save as ppm
         img.save(output_path, format='PPM')
         print(f"Converted '{input_path}' to '{output_path}'")
         return True

@@ -1,2 +1,6 @@
 matplotlib
 Pillow
+scikit-learn
+numpy
+joblib
+seaborn

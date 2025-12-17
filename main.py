@@ -3,6 +3,7 @@ import os
 import subprocess
 import tempfile 
 from processor import Image
+from ocr_model import OCRModel
 import matplotlib.pyplot as plt
 
 def show_results(images, titles):
@@ -46,8 +47,8 @@ def show_results(images, titles):
     plt.show()
 
 def main():
-    print("Image Convolution Processor")
-    print("-----------------------------------------")
+    print("Image Convolution Processor & OCR")
+    print("---------------------------------")
     
     images_to_show = []
     titles_to_show = []
@@ -115,50 +116,123 @@ def main():
         # 2. Grayscale
         print("Convert to grayscale")
         gray_img = img.to_grayscale()
-        # gray_img.save_ppm("step1_grayscale.ppm") # Removed, visualization now handles it
-        
         images_to_show.append(gray_img)
         titles_to_show.append("Grayscale")
 
-        # 3. Sharpen
-        sharpen_kernel = [
-            0, -1, 0,
-            -1, 5, -1,
-            0, -1, 0
+        # 3. Sharpen (Keep for visualization/edges, but use raw threshold for OCR usually)
+        # sharpen_kernel = [
+        #     0, -1, 0,
+        #     -1, 5, -1,
+        #     0, -1, 0
+        # ]
+        # print("Applying Sharpening...")
+        # sharpened = gray_img.convolve(sharpen_kernel, 3, 3)
+        # images_to_show.append(sharpened)
+        # titles_to_show.append("Sharpened")
+
+        # Thresholding for OCR (Need High Contrast)
+        print("Applying thresholding for OCR...")
+        # Standardize
+        binary_img = gray_img.threshold(90) 
+        
+        # Check if we need to invert 
+        avg_val = sum(binary_img.pixels) / len(binary_img.pixels)
+        if avg_val > 128:
+            print("Detected light background, inverting for OCR...")
+            ocr_ready_img = binary_img.invert()
+        else:
+            ocr_ready_img = binary_img
+
+        # Save OCR ready image for debug
+        if not os.path.exists("debug_output"):
+            os.makedirs("debug_output")
+        ocr_ready_img.save_ppm("debug_output/ocr_input.ppm")
+
+        images_to_show.append(ocr_ready_img)
+        titles_to_show.append("OCR Input")
+
+        # --- OCR SECTION ---
+        print("\n--- Starting OCR Process ---")
+        
+        # init model
+        ocr_model = OCRModel()
+        
+        font_paths = [
+            "C:/Windows/Fonts/arial.ttf",
+            "C:/Windows/Fonts/times.ttf",
+            "C:/Windows/Fonts/cour.ttf",
+            "C:/Windows/Fonts/calibri.ttf",
+            "C:/Windows/Fonts/verdana.ttf",
+            "C:/Windows/Fonts/arialbd.ttf",
+            "C:/Windows/Fonts/timesbd.ttf",
+            "C:/Windows/Fonts/courbd.ttf",
+            "C:/Windows/Fonts/calibrib.ttf",
+            "C:/Windows/Fonts/verdanab.ttf"
         ]
-        print("Applying Sharpening...")
-        sharpened = gray_img.convolve(sharpen_kernel, 3, 3)
+        
+        ocr_model.train(font_paths=font_paths) # Load or Train
+        
+        full_text = ""
+        
+        lines = ocr_ready_img.segment_lines()
+        print(f"Found {len(lines)} lines of text.")
 
-        images_to_show.append(sharpened)
-        titles_to_show.append("Sharpened")
+        # Create debug directory
+        debug_dir = "debug_output"
+        if not os.path.exists(debug_dir):
+            os.makedirs(debug_dir)
+        
+        for i, line_img in enumerate(lines):
+            # Save line debug
+            line_img.save_ppm(os.path.join(debug_dir, f"line_{i}.ppm"))
 
-        # laplacian
-        edge_kernel = [
-            -1, -1, -1,
-            -1,  8, -1,
-            -1, -1, -1
-        ]
-        print("applying edge detection...")
-        edges = gray_img.convolve(edge_kernel, 3, 3)
+            chars = line_img.segment_chars()
+            line_str = ""
+            for j, char_img in enumerate(chars):
+                # Save char debug
+                char_img.save_ppm(os.path.join(debug_dir, f"line_{i}_char_{j}.ppm"))
 
-        images_to_show.append(edges)
-        titles_to_show.append("Edges")
+                # Resize to model input size (20x20)
+                resized_char = char_img.resize_contain(20, 20, padding=2)
+                
+                # Normalize pixels to 0/1 matches training data
+                normalized_pixels = [1 if p > 128 else 0 for p in resized_char.pixels]
+                
+                # Calculate Aspect Ratio for heuristics
+                ar = char_img.height / max(1, char_img.width)
 
-        # thresholding
-        print("applying thresholding...")
-        bw_img = edges.threshold(100)
+                # Predict with enhanced precision
+                prediction = ocr_model.predict_enhanced(normalized_pixels, aspect_ratio=ar)
+                line_str += prediction
+            
+            full_text += line_str + "\n"
+            print(f"Line {i+1}: {line_str}")
+            
+        # Save to MD
+        output_md_path = "output.md"
+        with open(output_md_path, "w") as f:
+            f.write("# OCR Output\n\n")
+            f.write("```text\n")
+            f.write(full_text)
+            f.write("```\n")
+        print(f"\nOCR Results saved to {output_md_path}")
+        print("----------------------------")
+
         
         print("\nProcessing Complete.")
         print("Outputs saved to disk.")
         
         print("\nLaunching visualization...")
-        show_results(images_to_show, titles_to_show)
+        #show_results(images_to_show, titles_to_show)
 
     finally:
         # delete temp ppm
         if temp_ppm_path and os.path.exists(temp_ppm_path):
-            os.remove(temp_ppm_path)
-            print(f"Cleaned up temporary file: {temp_ppm_path}")
+            try:
+                os.remove(temp_ppm_path)
+                print(f"Cleaned up temporary file: {temp_ppm_path}")
+            except OSError:
+                pass
 
 if __name__ == "__main__":
     main()

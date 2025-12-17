@@ -32,3 +32,27 @@ python main.py
 ```
 
 The script will convert the image, apply convolution filters (Sharpen, Edge Detection), threshold it to black & white, and display the results in a window.
+
+
+
+## OCR
+
+*   **Line by Line Classification:** The system segments the image into lines and then characters.
+
+*   **Optimization & Speed:** Uses an MLP Classifier (a simple Feedforward Neural Network) trained on synthetic data. This provides a balance of speed and accuracy compared to heavier CNNs.
+
+*   **Binary Processing:** Images are thresholded and inverted (White text on Black background) to simplify feature extraction.
+
+*   **Output:** Recognized text is stored in `output.md`.
+
+
+
+### How it works
+
+1.  **Preprocessing:** Image is converted to grayscale and thresholded to binary.
+
+2.  **Segmentation:** Histogram projection profiles are used to isolate lines and individual characters.
+
+3.  **Classification:** Each character is resized to 20x20 pixels and classified using the pre-trained MLP model.
+
+4.  **Storage:** Results are appended to a Markdown file.

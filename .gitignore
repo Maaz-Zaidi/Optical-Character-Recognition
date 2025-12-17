@@ -1,6 +1,9 @@
 # Python bytecode
 __pycache__/
 
+#debug
+debug_output
+
 # Generated output files
 original.ppm
 temp_*.ppm 
