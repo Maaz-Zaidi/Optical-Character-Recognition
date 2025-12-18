@@ -1,4 +1,6 @@
 import math
+import numpy as np
+import cv2
 
 class Image:
     def __init__(self, width, height, pixels, max_val=255):
@@ -6,6 +8,50 @@ class Image:
         self.height = height
         self.pixels = pixels 
         self.max_val = max_val
+
+    def segment_contours(self, min_area=10, erode_iters=0):
+        # Assumes grayscale/binary
+        img_np = np.array(self.pixels, dtype=np.uint8).reshape((self.height, self.width))
+        
+        # Ensure binary
+        _, thresh = cv2.threshold(img_np, 127, 255, cv2.THRESH_BINARY)
+        
+        # Check average pixel value for inversion (we want white text on black bg for contours)
+        if np.mean(thresh) > 127:
+            thresh = 255 - thresh
+            
+        # Erode to separate touching characters
+        if erode_iters > 0:
+            kernel = np.ones((2,2), np.uint8)
+            thresh = cv2.erode(thresh, kernel, iterations=erode_iters)
+            
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        chars = []
+        bounding_boxes = []
+        
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if w * h > min_area:
+                bounding_boxes.append((x, y, w, h))
+        
+        # Sort by X coordinate (Left to Right)
+        bounding_boxes.sort(key=lambda b: b[0])
+        
+        # If we eroded, the bounding boxes might be slightly smaller or shifted, so we dialate and pad
+        
+        for (x, y, w, h) in bounding_boxes:
+            if erode_iters > 0:
+                # Pad back
+                pad = erode_iters
+                x = max(0, x - pad)
+                y = max(0, y - pad)
+                w = min(self.width - x, w + 2*pad)
+                h = min(self.height - y, h + 2*pad)
+                
+            chars.append(self.crop(x, y, w, h))
+            
+        return chars
 
     @classmethod
     def load_ppm(cls, filepath):

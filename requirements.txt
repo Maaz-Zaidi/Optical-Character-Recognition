@@ -1,6 +1,8 @@
-matplotlib
+numpy
 Pillow
 scikit-learn
-numpy
 joblib
+matplotlib
 seaborn
+torch
+torchvision

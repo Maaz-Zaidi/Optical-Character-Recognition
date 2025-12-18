@@ -8,12 +8,11 @@ def ascii_art(img):
     chars = [" ", ".", ":", "-", "=", "+", "*", "#", "%", "@"]
     w, h = img.width, img.height
     
-    # Resize for terminal viewing - keep aspect ratio but max width 200
     target_w = 200
     if w > target_w:
         scale = target_w / w
         new_w = target_w
-        new_h = int(h * scale * 0.5) # 0.5 for char aspect correction
+        new_h = int(h * scale * 0.5) 
     else:
         new_w = w
         new_h = int(h * 0.5)
@@ -33,8 +32,7 @@ def ascii_art(img):
             if isinstance(val, tuple):
                 val = sum(val) // 3
             
-            # val is 0..255. 0 is black (bg in OCR input). 255 is white (text).
-            # We want text to be visible.
+            # val is 0..255. 0 is black (bg in OCR input). 255 is white (text)
             idx = int((val / 255) * (len(chars) - 1))
             line += chars[idx]
         print(line)

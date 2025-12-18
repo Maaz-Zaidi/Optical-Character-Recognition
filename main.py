@@ -3,7 +3,7 @@ import os
 import subprocess
 import tempfile 
 from processor import Image
-from ocr_model import OCRModel
+from ocr_model_cnn import OCRModelCNN as OCRModel
 import matplotlib.pyplot as plt
 
 def show_results(images, titles):
@@ -119,7 +119,7 @@ def main():
         images_to_show.append(gray_img)
         titles_to_show.append("Grayscale")
 
-        # 3. Sharpen (Keep for visualization/edges, but use raw threshold for OCR usually)
+        # 3. Sharpen 
         # sharpen_kernel = [
         #     0, -1, 0,
         #     -1, 5, -1,
@@ -156,21 +156,10 @@ def main():
         
         # init model
         ocr_model = OCRModel()
-        
-        font_paths = [
-            "C:/Windows/Fonts/arial.ttf",
-            "C:/Windows/Fonts/times.ttf",
-            "C:/Windows/Fonts/cour.ttf",
-            "C:/Windows/Fonts/calibri.ttf",
-            "C:/Windows/Fonts/verdana.ttf",
-            "C:/Windows/Fonts/arialbd.ttf",
-            "C:/Windows/Fonts/timesbd.ttf",
-            "C:/Windows/Fonts/courbd.ttf",
-            "C:/Windows/Fonts/calibrib.ttf",
-            "C:/Windows/Fonts/verdanab.ttf"
-        ]
-        
-        ocr_model.train(font_paths=font_paths) # Load or Train
+        if not ocr_model.load():
+             print("Model not found. Please run 'train_cnn.py' first.")
+             return
+             
         
         full_text = ""
         
@@ -186,23 +175,22 @@ def main():
             # Save line debug
             line_img.save_ppm(os.path.join(debug_dir, f"line_{i}.ppm"))
 
-            chars = line_img.segment_chars()
+            # OpenCV Contours for better segmentation
+            try:
+                chars = line_img.segment_contours(min_area=15, erode_iters=0)
+            except Exception as e:
+                print(f"Contour segmentation failed: {e}, falling back to projection.")
+                chars = line_img.segment_chars()
+
             line_str = ""
             for j, char_img in enumerate(chars):
                 # Save char debug
                 char_img.save_ppm(os.path.join(debug_dir, f"line_{i}_char_{j}.ppm"))
 
-                # Resize to model input size (20x20)
-                resized_char = char_img.resize_contain(20, 20, padding=2)
+                raw_pixels = char_img.pixels
                 
-                # Normalize pixels to 0/1 matches training data
-                normalized_pixels = [1 if p > 128 else 0 for p in resized_char.pixels]
-                
-                # Calculate Aspect Ratio for heuristics
-                ar = char_img.height / max(1, char_img.width)
-
-                # Predict with enhanced precision
-                prediction = ocr_model.predict_enhanced(normalized_pixels, aspect_ratio=ar)
+                # Predict
+                prediction = ocr_model.predict(raw_pixels, width=char_img.width, height=char_img.height)
                 line_str += prediction
             
             full_text += line_str + "\n"
